@@ -58,15 +58,180 @@ at the essence of the universe is the application
 
 
 create a web app
+
+ls
+
+```
+📁 ..
+  📁 .
+    📑 README.md
+```
+
 make it simple
 start with a greeter
 use .NET (hey, nobody is perfect)
 call it hello
+
+dotnet new create "web" --name "Martin.Hello" --exclude-launch-settings --output ./applications/hello
+
+```
+The template "ASP.NET Core Empty" was created successfully.
+
+Processing post-creation actions...
+Restoring ...\applications\hello\Martin.Hello.csproj:
+  Determining projects to restore...
+  Restored ...\applications\hello\Martin.Hello.csproj (in 87 ms).
+Restore succeeded.
+```
+
+ls
+
+```diff
+📁 ..
+  📁 .
++   📁 applications
++     🧾 appsettings.Development.json
++     🧾 appsettings.json
++     🧾 Martin.Hello.csproj
++     🧾 Program.cs
+    📑 README.md
+```
+
+Program.cs
+
+```cs
+        var builder = WebApplication.CreateBuilder(args);
+        var app = builder.Build();
+
+        app.MapGet("/", () => "Hello World!");
+
+        app.Run();
+```
+
+dotnet run --project ./applications/hello
+
+```
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: ...\applications\hello
+```
+
+of course if we navigate to http://localhost:5000, it will show
+
+```
+Hello World!
+```
+
+But I don't want to open and fiddle around with my browser all the time, because I'm lazy, so I'll create a `hello.http` file and use [REST Client for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) instead.
+
+ls
+
+```diff
+📁 ..
+  📁 .
+    📁 applications
+      🧾 appsettings.Development.json
+      🧾 appsettings.json
++     🌐 hello.http
+      🧾 Martin.Hello.csproj
+      🧾 Program.cs
+    📑 README.md
+```
+
+hello.http
+
+```http
+@BASE_URL = "http://localhost:5000"
+
+GET {{BASE_URL}}
+```
+
+Trying that out will slap you back in the face with an unkind error message:
+
+> The connection was rejected. Either the requested service isn’t running on the requested server/port, the proxy settings in vscode are misconfigured, or a firewall is blocking requests. Details: RequestError: connect ECONNREFUSED 127.0.0.1:443.
+
+The silly solution here being to remove the quotes around the value of `@BASE_URL = "http://localhost:5000"`, because we can't have nice things.
+
+hello.http
+
+```diff
+- @BASE_URL = "http://localhost:5000"
++ @BASE_URL =  http://localhost:5000
+```
+
 define its behavior
     GET /       => "Hello.", plain text
     GET /<name> => "Hello, <name>."
 simple web api
 
+hello.http
+
+```http
+@BASE_URL = http://localhost:5000
+
+###############################################################################
+# This should return "Hello.", plain-text.
+
+GET {{BASE_URL}}/
+
+###############################################################################
+# @prompt NAME
+# This should return "Hello, <NAME>.", plain-text.
+
+GET {{BASE_URL}}/{{NAME}}
+```
+
+
+Program.cs
+
+```cs
+        var builder = WebApplication.CreateBuilder(args);
+        var app = builder.Build();
+
+/* - */ app.MapGet("/", () => "Hello World!");
+
+/* + */ app.MapGet("/", () => "Hello.");
+/* + */ app.MapGet("/{name}", (string name) => $"Hello, {name}.");
+
+        app.Run();
+```
+
+Restarting the application while developing is becoming quite tedious already, so I should use `dotnet watch run` instead of `dotnet run`.
+
+Now http://localhost:5000/Martin returns
+
+```
+Hello, Martin.
+```
+
+if you're committing to Git, you'll notice the `bin` and `obj` folders are massively full of compiler-generated 💩. I'll make myself a `.gitignore` to save my bandwidth.
+
+ls
+
+```diff
+📁 ..
+  📁 .
+    📁 applications
++     ✋ .gitignore
+      🧾 appsettings.Development.json
+      🧾 appsettings.json
+      🌐 hello.http
+      🧾 Martin.Hello.csproj
+      🧾 Program.cs
+    📑 README.md
+```
+
+.gitignore
+
+```
+bin/
+obj/
+```
 
 now that we've got our application, we must build it, and ship it.
 easy just press F5, right?
@@ -95,3 +260,12 @@ run te published app
 it works (of course, it's mine! That feeling wont last for long, though)
 
 -->
+
+
+<!--
+
+oh my godness, containers!
+
+-->
+
+

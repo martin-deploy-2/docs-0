@@ -730,6 +730,134 @@ OK: 139 MiB in 33 packages
 Hello, Martin.
 ```
 
+could it be because we're not using the `mcr.microsoft.com/dotnet/aspnet:7.0` base image?
+
+Containerfile
+
+```diff
+- FROM alpine:3.18.0
++ FROM mcr.microsoft.com/dotnet/aspnet:7.0
+- RUN apk add aspnetcore7-runtime
+  COPY ./bin/publish /opt/hello
+  ENTRYPOINT ["dotnet", "/opt/hello/Martin.Hello.dll"]
+```
+
+nerdctl image build --tag hello:v0 ./applications/hello
+```
+[+] Building 13.2s (7/7)
+[+] Building 13.4s (7/7) FINISHED
+ => [internal] load build definition from Containerfile                                                       0.1s
+ => => transferring dockerfile: 167B                                                                          0.0s
+ => [internal] load .dockerignore                                                                             0.1s
+ => => transferring context: 2B                                                                               0.0s
+ => [internal] load metadata for mcr.microsoft.com/dotnet/aspnet:7.0                                          4.4s
+ => [internal] load build context                                                                             0.3s
+ => => transferring context: 468B                                                                             0.3s
+ => [1/2] FROM mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e720fe18  5.8s
+ => => resolve mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e720fe18  0.0s
+ => => sha256:31e2a952779c41cf5cd187ae1ae276f3de3965a43d41a0250b56c58e1206db8a 10.12MB / 10.12MB              0.6s
+ => => sha256:cbca4ad4689cc576651411faa2b98dff307dc8f6de9adf08a5a2d6ae2239d233 154B / 154B                    0.6s
+ => => sha256:6c3981608c2b6b3825fe63b9c920101d7bf4ca80ceda7ddc0dc09fdc93a5797d 14.97MB / 14.97MB              1.1s
+ => => sha256:a2e354eccee4ad7336b4692c2662de61a68677cec551530c6d7045bcbb3cd6d7 32.45MB / 32.45MB              2.1s
+ => => sha256:14726c8f78342865030f97a8d3492e2d1a68fbd22778f9a31dc6be4b4f12a9bc 31.42MB / 31.42MB              2.5s
+ => => extracting sha256:14726c8f78342865030f97a8d3492e2d1a68fbd22778f9a31dc6be4b4f12a9bc                     1.1s
+ => => extracting sha256:6c3981608c2b6b3825fe63b9c920101d7bf4ca80ceda7ddc0dc09fdc93a5797d                     0.4s
+ => => extracting sha256:a2e354eccee4ad7336b4692c2662de61a68677cec551530c6d7045bcbb3cd6d7                     0.8s
+ => => extracting sha256:cbca4ad4689cc576651411faa2b98dff307dc8f6de9adf08a5a2d6ae2239d233                     0.0s
+ => => extracting sha256:31e2a952779c41cf5cd187ae1ae276f3de3965a43d41a0250b56c58e1206db8a                     0.3s
+ => [2/2] COPY ./bin/publish /opt/hello                                                                       0.2s
+ => exporting to docker image format                                                                          2.7s
+ => => exporting layers                                                                                       0.2s
+ => => exporting manifest sha256:e9b1bee8d602a2e4b21fe3e31c0e155693011a6faa3ed546d44662ad1b352088             0.0s
+ => => exporting config sha256:f2e6f1b45369056f30266289768dbd79c34898a54a94c3ba952e419cb51e5ba0               0.0s
+ => => sending tarball                                                                                        2.4s
+Loaded image: docker.io/library/hello:v0
+```
+
+nerdctl container run --rm --publish 5000:5000 hello:v0
+
+```
+  info: Microsoft.Hosting.Lifetime[14]
++       Now listening on: http://[::]:80
+  info: Microsoft.Hosting.Lifetime[0]
+        Application started. Press Ctrl+C to shut down.
+  info: Microsoft.Hosting.Lifetime[0]
+        Hosting environment: Production
+  info: Microsoft.Hosting.Lifetime[0]
+        Content root path: /
+```
+
+but there is a problem, as our app now listens on port 80 instead of 5000
+we have to link port 80
+
+nerdctl container run --rm --publish 80:80 hello:v0
+
+http://localhost:80 ?
+
+```
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Fri, 25 Aug 2023 13:22:27 GMT
+Content-Length: 19
+Connection: close
+
+404 page not found
+```
+
+As silly as it seems, let's test the possibility that linking a port number on the container to the same port number on the host is the origin of the problem.
+
+link the container port 80 to host port 5000
+
+nerdctl container run --rm --publish 80:5000 hello:v0
+
+http://localhost:5000 ?
+
+```
+The connection was rejected. Either the requested service isn’t running on the requested server/port, the proxy settings in vscode are misconfigured, or a firewall is blocking requests. Details: RequestError: connect ECONNREFUSED 127.0.0.1:5000.
+```
+
+is it the other way around, then?
+
+nerdctl container run --rm --publish 5000:80 hello:v0
+
+http://localhost:5000 ?
+
+```
+HTTP/1.1 200 OK
+Connection: close
+Content-Type: text/plain; charset=utf-8
+Date: Fri, 25 Aug 2023 13:25:57 GMT
+Server: Kestrel
+Transfer-Encoding: chunked
+
+Hello.
+```
+
+Of course it is! Because we can't have nice things!
+
+
+Let's get back to using `alpine:3.18.0` as our base image and installing `aspnetcore7-runtime`, then run the container linking ports differently:
+
+nerdctl container run --rm --publish 8080:5000 hello:v0
+```
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /
+```
+
+http://localhost:80
+
+```
+read ECONNRESET
+```
+
+It looks like we are stuck with our `mcr.microsoft.com/dotnet/aspnet:7.0`-branded leash. because we can't have nice things.
 
 -->
 

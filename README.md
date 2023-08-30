@@ -13,37 +13,37 @@ an APPLICATION
 
 then, after decoupling the application from the machine,
 an APPLICATION
-	runs on an OS
-		that operates a MACHINE
+    runs on an OS
+        that operates a MACHINE
 => "It works on my OS"
 
 because we still thought the application was too close from the machine (and because applications started having expectations about the underlying OS)
 an APPLICATION
-	runs on GUEST OS
-		in a VM
-			on a HOST OS
-				that operates the MACHINE
+    runs on GUEST OS
+        in a VM
+            on a HOST OS
+                that operates the MACHINE
 => "It works in my VM"
 
 when virtual machines got too slow for our speed greed,
 an APPLICATION
-	runs on HALF AN OS
-		isolated in a CONTAINER
-			sharing its other half with a HOST OS
-				that operates the MACHINE
+    runs on HALF AN OS
+        isolated in a CONTAINER
+            sharing its other half with a HOST OS
+                that operates the MACHINE
 => "It works in my container"
 
 but, thanks the gods, today,
 an APPLICATION
-	runs on HALF AN OS
-		isolated in its CONTAINER
-			wrapped by a POD
-				part of a REPLICA SET
-					managed by a DEPLOYMENT
-						running on KUBERNETES-FIRST OS
-							in a VM (you really didn't think they'd go away so easily)
-								forming a CLUSTER
-									provisioned in the CLOUD
+    runs on HALF AN OS
+        isolated in its CONTAINER
+            wrapped by a POD
+                part of a REPLICA SET
+                    managed by a DEPLOYMENT
+                        running on KUBERNETES-FIRST OS
+                            in a VM (you really didn't think they'd go away so easily)
+                                forming a CLUSTER
+                                    provisioned in the CLOUD
 => "It works on my cluster"
 
 Application release management has never been so streamlined.
@@ -373,13 +373,15 @@ ls
 📁 ..
   📁 .
     📁 applications
-      ✋ .gitignore
-      🧾 appsettings.Development.json
-      🧾 appsettings.json
-+     🐳 Containerfile
-      🌐 hello.http
-      🧾 Martin.Hello.csproj
-      🧾 Program.cs
+      📁 hello
+        ✋ .gitignore
+        🧾 appsettings.Development.json
+        🧾 appsettings.json
++       🐳 Containerfile
+        🌐 hello.http
+        🧾 Martin.Hello.csproj
+        🧾 Program.cs
+        🧾 publish-me-daddy.ps1
     📑 README.md
 ```
 
@@ -861,3 +863,491 @@ It looks like we are stuck with our `mcr.microsoft.com/dotnet/aspnet:7.0`-brande
 
 -->
 
+<!--
+
+Pod
+
+the pod groups containers
+it provides shared storage, in the form of volumes, which can also point to external sources
+all containers in a pod share an IP address, ports, and `localhost`
+all containers in a pod are scheduled on the same node
+
+YAML is not a markup language
+it is a data serialization language
+as such it can be used to serialize data, but it's not very good at it
+or as a markup language, but it's not very good at it
+or to declare configuration, but it's not very good at it either
+
+the configuration of a pod can be declared in YAML
+
+create a yaml file to define a pod:
+
+ls
+
+```diff
+📁 ..
+  📁 .
+    📁 applications
+      📁 hello
+        ✋ .gitignore
+        🧾 appsettings.Development.json
+        🧾 appsettings.json
+        🐳 Containerfile
+        🌐 hello.http
+        🧾 Martin.Hello.csproj
+        🧾 Program.cs
+        🧾 publish-me-daddy.ps1
+    📁 pods
++     🧾 hello.yaml
+    📑 README.md
+```
+
+hello.yaml:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hello
+spec:
+  containers:
+    - name: app
+      image: alpine:3.18.0
+      command: [echo]
+      args: ["Hello."]
+```
+
+kubectl apply --filename ./pods/hello.yaml
+```
+pod/hello created
+```
+
+see if we can list it
+
+kubectl get pods
+```
+NAME    READY   STATUS      RESTARTS      AGE
+hello   0/1     Completed   2 (21s ago)   23s
+```
+
+of course our pod is marked as Completed and must have died along the way, as proven by the same command
+
+kubectl get pods
+```
+NAME    READY   STATUS             RESTARTS      AGE
+hello   0/1     CrashLoopBackOff   3 (35s ago)   80s
+```
+
+because kubernetes is a mad world where you can't run the same command over and over and expect the same result
+still, in our first exposure case, it's not quite as critical as it seems, as the container simply did its job of echoing "Hello."
+
+kubectl logs pod/hello
+```
+Hello.
+```
+
+to prevent the container from dying, we can make a loop:
+
+hello.yaml
+
+```diff
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: hello
+  spec:
+    containers:
+      - name: app
+        image: alpine:3.18.0
+-       command: [echo]
++       command: [ash, -c]
+-       args: ["Hello."]
++       args: ['while true; do echo "Hello."; sleep 1; done']
+```
+
+kubectl apply --filename ./pods/hello.yaml
+```
+The Pod "hello" is invalid: spec: Forbidden: pod updates may not change fields other than `spec.containers[*].image`, `spec.initContainers[*].image`, `spec.activeDeadlineSeconds`, `spec.tolerations` (only additions to existing tolerations) or `spec.terminationGracePeriodSeconds` (allow it to be set to 1 if it was previously negative)
+  core.PodSpec{
+        Volumes:        {{Name: "kube-api-access-njbtv", VolumeSource: {Projected: &{Sources: {{ServiceAccountToken: &{ExpirationSeconds: 3607, Path: "token"}}, {ConfigMap: &{LocalObjectReference: {Name: "kube-root-ca.crt"}, Items: {{Key: "ca.crt", Path: "ca.crt"}}}}, {DownwardAPI: &{Items: {{Path: "namespace", FieldRef: &{APIVersion: "v1", FieldPath: "metadata.namespace"}}}}}}, DefaultMode: &420}}}},
+        InitContainers: nil,
+        Containers: []core.Container{
+                {
+                        Name:       "app",
+                        Image:      "alpine:3.18.0",
+                        Command:    {"ash", "-c"},
+-                       Args:       []string{"echo Hello."},
++                       Args:       []string{`while true; do echo "Hello."; sleep 1; done`},
+                        WorkingDir: "",
+                        Ports:      nil,
+                        ... // 16 identical fields
+                },
+        },
+        EphemeralContainers: nil,
+        RestartPolicy:       "Always",
+        ... // 26 identical fields
+  }
+```
+
+I forgot to mention that a pod is mostly immutable, the only mutable fields being of low interest, and the container image being a case were we generally prefer a full pod restart.
+
+to circumvent this, we can either murder the pod using `kubectl delete pod hello`, or use force:
+
+kubectl apply --filename ./pods/hello.yaml --force
+```
+pod/hello configured
+```
+
+
+kubectl get pods
+```
+NAME    READY   STATUS    RESTARTS   AGE
+hello   1/1     Running   0          54s
+```
+
+kubectl logs pod/hello --follow
+```
+Hello.
+Hello.
+Hello.
+Hello.
+Hello.
+Hello.
+Hello.
+Hello.
+Hello.
+Hello.
+```
+
+and will print more `Hello.` until you press CTRL+C or murder the pod.
+sweet, I hear you thinking, let's deploy all our applications in containers within a pod!
+Let's take the example of two containers, happily running together in the same pod
+one container is quite stable, but the other one is prone to terminating on the error side of the exit code
+to simulate this, we'll add another container to our pod and make it error out after 10 seconds
+
+hello.yaml
+
+```diff
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: hello
+  spec:
+    containers:
+      - name: app
+        image: alpine:3.18.0
+        command: [ash, -c]
+-       args: ['while true; do echo "Hello."; sleep 1; done']
++       args: ['DATE=$(date); while true; do echo "$DATE - Hello."; sleep 1; done']
++     - name: el-contenedito-de-la-muerte
++       image: alpine:3.18.0
++       command: [ash, -c]
++       args: ['for i in $(seq 1 10); do echo "Hello, $i."; sleep 1; done; exit 666']
+```
+
+kubectl apply --filename ./pods/hello.yaml --force
+
+```
+pod/hello configured
+```
+
+
+`kubectl logs pod/hello --container app --follow` and wait 10s
+
+```
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+Wed Aug 30 15:30:05 UTC 2023 - Hello.
+```
+
+One failing container will not sink the whole pod, but will put it in a CrashLoopBackOff state:
+
+kubectl get pods
+```
+NAME    READY   STATUS             RESTARTS      AGE
+hello   1/2     CrashLoopBackOff   5 (95s ago)   5m35s
+```
+
+however, we will be facing another issue, because we can't have nice things, remember?
+all containers in a pod are scheduled on the same node, which, on a single-node cluster like a local Rancher Desktop development environment, is not problematic, but it will become bad on a fully fledged cloud-provisioned cluster with dozens of nodes. And that's without talking about scaling and replication, the needs for which will vary per application (container), while the smallest building block of Kubernetes is the pod.
+
+let's deploy our hello application, replacing the image by `hello:v0`, and trust our Containerfile's ENTRYPOINT to call .NET
+
+hello.yaml
+```diff
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: hello
+  spec:
+    containers:
+      - name: app
+-       image: alpine:3.18.0
++       image: hello:v0
+-       command: [ash, -c]
+-       args: ['DATE=$(date); while true; do echo "$DATE - Hello."; sleep 1; done']
+-     - name: el-contenedito-de-la-muerte
+-       image: alpine:3.18.0
+-       command: [ash, -c]
+-       args: ['for i in $(seq 1 10); do echo "Hello, $i."; sleep 1; done; exit 666']
+```
+
+
+kubectl apply --filename ./pods/hello.yaml --force
+```
+pod/hello configured
+```
+
+kubectl get pods
+```
+NAME    READY   STATUS         RESTARTS   AGE
+hello   0/1     ErrImagePull   0          15s
+```
+
+kubectl describe pod/hello
+```
+Name:             hello
+Namespace:        default
+Service Account:  default
+Node:             .../...
+Start Time:       Wed, 30 Aug 2023 16:43:43 +0100
+Labels:           <none>
+Status:           Pending
+IP:               10.42.0.140
+IPs:
+  IP:  10.42.0.140
+Containers:
+  app:
+    Container ID:
+    Image:          hello:v0
+    Image ID:
+    Port:           <none>
+    Host Port:      <none>
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-zz26d (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             False
+  ContainersReady   False
+  PodScheduled      True
+Volumes:
+  kube-api-access-zz26d:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  34s                default-scheduler  Successfully assigned default/hello to ...
+  Normal   BackOff    29s                kubelet            Back-off pulling image "hello:v0"
+  Warning  Failed     29s                kubelet            Error: ImagePullBackOff
+  Normal   Pulling    15s (x2 over 34s)  kubelet            Pulling image "hello:v0"
+  Warning  Failed     10s (x2 over 29s)  kubelet            Failed to pull image "hello:v0": rpc error: code = Unknown desc = failed to pull and unpack image "docker.io/library/hello:v0": failed to resolve reference "docker.io/library/hello:v0": pull access denied, repository does not exist or may require authorization: server message: insufficient_scope: authorization failed
+  Warning  Failed     10s (x2 over 29s)  kubelet            Error: ErrImagePull
+```
+
+the interesting bit here is the Events section, in which we learn that kubernetes failed to pull and unpack image "docker.io/library/hello:v0"
+looks like it queries the docker registry, even if I have the image locally, because we can't heve nice things
+to make our images available to the local kubernetess cluster, we have to build them with `nerdctl` in the `k8s.io` "namespace"
+nerdctl namespaces are not the same as kubernetes namespaces, because what else
+
+nerdctl image build --tag hello:v0 --namespace k8s.io ./applications/hello
+```
+[+] Building 4.6s (7/7)
+[+] Building 4.6s (7/7) FINISHED
+ => [internal] load .dockerignore                                                                             0.0s
+ => => transferring context: 2B                                                                               0.0s
+ => [internal] load build definition from Containerfile                                                       0.1s
+ => => transferring dockerfile: 167B                                                                          0.0s
+ => [internal] load metadata for mcr.microsoft.com/dotnet/aspnet:7.0                                          2.2s
+ => [internal] load build context                                                                             0.3s
+ => => transferring context: 468B                                                                             0.3s
+ => [1/2] FROM mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e720fe18  0.0s
+ => => resolve mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e720fe18  0.0s
+ => CACHED [2/2] COPY ./bin/publish /opt/hello                                                                0.0s
+ => exporting to docker image format                                                                          2.0s
+ => => exporting layers                                                                                       0.0s
+ => => exporting manifest sha256:e9b1bee8d602a2e4b21fe3e31c0e155693011a6faa3ed546d44662ad1b352088             0.0s
+ => => exporting config sha256:f2e6f1b45369056f30266289768dbd79c34898a54a94c3ba952e419cb51e5ba0               0.0s
+ => => sending tarball                                                                                        1.9s
+Loaded image: docker.io/library/hello:v0
+```
+
+nerdctl image list --namespace k8s.io
+```
+REPOSITORY                                  TAG                     IMAGE ID        CREATED           PLATFORM       SIZE         BLOB SIZE
+alpine                                      3.18.0                  02bb6f428431    2 weeks ago       linux/amd64    7.6 MiB      3.2 MiB
+hello                                       v0                      e9b1bee8d602    14 seconds ago    linux/amd64    214.8 MiB    84.9 MiB
+```
+
+now our application is running fine:
+
+kubectl get pods
+```
+NAME    READY   STATUS    RESTARTS   AGE
+hello   1/1     Running   0          11m
+```
+
+kubectl logs pod/hello
+```
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://[::]:80
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /
+```
+
+But how do we access it?
+The first step would be to ensure the web service is accessible, but CURLing it from within te container
+unlike me, you will remember that the microsoft .NET base image uses Debian, as opposed to Alpine,
+and you will not loose your precious time trying to understand why `ash` is suddently unavailable
+
+
+kubectl exec pod/hello -- apt update
+```
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Get:1 http://deb.debian.org/debian bullseye InRelease [116 kB]
+Get:2 http://deb.debian.org/debian-security bullseye-security InRelease [48.4 kB]
+Get:3 http://deb.debian.org/debian bullseye-updates InRelease [44.1 kB]
+Get:4 http://deb.debian.org/debian bullseye/main amd64 Packages [8183 kB]
+Get:5 http://deb.debian.org/debian-security bullseye-security/main amd64 Packages [245 kB]
+Get:6 http://deb.debian.org/debian bullseye-updates/main amd64 Packages [17.5 kB]
+Fetched 8653 kB in 2s (3701 kB/s)
+Reading package lists...
+Building dependency tree...
+Reading state information...
+All packages are up to date.
+```
+
+kubectl exec pod/hello -- apt install curl -y
+
+```
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  libbrotli1 libcurl4 libldap-2.4-2 libldap-common libnghttp2-14 libpsl5
+  librtmp1 libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1
+  publicsuffix
+Suggested packages:
+  libsasl2-modules-gssapi-mit | libsasl2-modules-gssapi-heimdal
+  libsasl2-modules-ldap libsasl2-modules-otp libsasl2-modules-sql
+The following NEW packages will be installed:
+  curl libbrotli1 libcurl4 libldap-2.4-2 libldap-common libnghttp2-14 libpsl5
+  librtmp1 libsasl2-2 libsasl2-modules libsasl2-modules-db libssh2-1
+  publicsuffix
+0 upgraded, 13 newly installed, 0 to remove and 0 not upgraded.
+Need to get 1981 kB of archives.
+After this operation, 4363 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian bullseye/main amd64 libbrotli1 amd64 1.0.9-2+b2 [279 kB]
+Get:2 http://deb.debian.org/debian bullseye/main amd64 libsasl2-modules-db amd64 2.1.27+dfsg-2.1+deb11u1 [69.1 kB]
+Get:3 http://deb.debian.org/debian bullseye/main amd64 libsasl2-2 amd64 2.1.27+dfsg-2.1+deb11u1 [106 kB]
+Get:4 http://deb.debian.org/debian bullseye/main amd64 libldap-2.4-2 amd64 2.4.57+dfsg-3+deb11u1 [232 kB]
+Get:5 http://deb.debian.org/debian bullseye/main amd64 libnghttp2-14 amd64 1.43.0-1 [77.1 kB]
+Get:6 http://deb.debian.org/debian bullseye/main amd64 libpsl5 amd64 0.21.0-1.2 [57.3 kB]
+Get:7 http://deb.debian.org/debian bullseye/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2+b2 [60.8 kB]
+Get:8 http://deb.debian.org/debian bullseye/main amd64 libssh2-1 amd64 1.9.0-2 [156 kB]
+Get:9 http://deb.debian.org/debian bullseye/main amd64 libcurl4 amd64 7.74.0-1.3+deb11u7 [346 kB]
+Get:10 http://deb.debian.org/debian bullseye/main amd64 curl amd64 7.74.0-1.3+deb11u7 [270 kB]
+Get:11 http://deb.debian.org/debian bullseye/main amd64 libldap-common all 2.4.57+dfsg-3+deb11u1 [95.8 kB]
+Get:12 http://deb.debian.org/debian bullseye/main amd64 libsasl2-modules amd64 2.1.27+dfsg-2.1+deb11u1 [104 kB]
+Get:13 http://deb.debian.org/debian bullseye/main amd64 publicsuffix all 20220811.1734-0+deb11u1 [127 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 1981 kB in 1s (1674 kB/s)
+Selecting previously unselected package libbrotli1:amd64.
+(Reading database ... 6988 files and directories currently installed.)
+Preparing to unpack .../00-libbrotli1_1.0.9-2+b2_amd64.deb ...
+Unpacking libbrotli1:amd64 (1.0.9-2+b2) ...
+Selecting previously unselected package libsasl2-modules-db:amd64.
+Preparing to unpack .../01-libsasl2-modules-db_2.1.27+dfsg-2.1+deb11u1_amd64.deb ...
+Unpacking libsasl2-modules-db:amd64 (2.1.27+dfsg-2.1+deb11u1) ...
+Selecting previously unselected package libsasl2-2:amd64.
+Preparing to unpack .../02-libsasl2-2_2.1.27+dfsg-2.1+deb11u1_amd64.deb ...
+Unpacking libsasl2-2:amd64 (2.1.27+dfsg-2.1+deb11u1) ...
+Selecting previously unselected package libldap-2.4-2:amd64.
+Preparing to unpack .../03-libldap-2.4-2_2.4.57+dfsg-3+deb11u1_amd64.deb ...
+Unpacking libldap-2.4-2:amd64 (2.4.57+dfsg-3+deb11u1) ...
+Selecting previously unselected package libnghttp2-14:amd64.
+Preparing to unpack .../04-libnghttp2-14_1.43.0-1_amd64.deb ...
+Unpacking libnghttp2-14:amd64 (1.43.0-1) ...
+Selecting previously unselected package libpsl5:amd64.
+Preparing to unpack .../05-libpsl5_0.21.0-1.2_amd64.deb ...
+Unpacking libpsl5:amd64 (0.21.0-1.2) ...
+Selecting previously unselected package librtmp1:amd64.
+Preparing to unpack .../06-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_amd64.deb ...
+Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+Selecting previously unselected package libssh2-1:amd64.
+Preparing to unpack .../07-libssh2-1_1.9.0-2_amd64.deb ...
+Unpacking libssh2-1:amd64 (1.9.0-2) ...
+Selecting previously unselected package libcurl4:amd64.
+Preparing to unpack .../08-libcurl4_7.74.0-1.3+deb11u7_amd64.deb ...
+Unpacking libcurl4:amd64 (7.74.0-1.3+deb11u7) ...
+Selecting previously unselected package curl.
+Preparing to unpack .../09-curl_7.74.0-1.3+deb11u7_amd64.deb ...
+Unpacking curl (7.74.0-1.3+deb11u7) ...
+Selecting previously unselected package libldap-common.
+Preparing to unpack .../10-libldap-common_2.4.57+dfsg-3+deb11u1_all.deb ...
+Unpacking libldap-common (2.4.57+dfsg-3+deb11u1) ...
+Selecting previously unselected package libsasl2-modules:amd64.
+Preparing to unpack .../11-libsasl2-modules_2.1.27+dfsg-2.1+deb11u1_amd64.deb ...
+Unpacking libsasl2-modules:amd64 (2.1.27+dfsg-2.1+deb11u1) ...
+Selecting previously unselected package publicsuffix.
+Preparing to unpack .../12-publicsuffix_20220811.1734-0+deb11u1_all.deb ...
+Unpacking publicsuffix (20220811.1734-0+deb11u1) ...
+Setting up libpsl5:amd64 (0.21.0-1.2) ...
+Setting up libbrotli1:amd64 (1.0.9-2+b2) ...
+Setting up libsasl2-modules:amd64 (2.1.27+dfsg-2.1+deb11u1) ...
+Setting up libnghttp2-14:amd64 (1.43.0-1) ...
+Setting up libldap-common (2.4.57+dfsg-3+deb11u1) ...
+Setting up libsasl2-modules-db:amd64 (2.1.27+dfsg-2.1+deb11u1) ...
+Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+Setting up libsasl2-2:amd64 (2.1.27+dfsg-2.1+deb11u1) ...
+Setting up libssh2-1:amd64 (1.9.0-2) ...
+Setting up publicsuffix (20220811.1734-0+deb11u1) ...
+Setting up libldap-2.4-2:amd64 (2.4.57+dfsg-3+deb11u1) ...
+Setting up libcurl4:amd64 (7.74.0-1.3+deb11u7) ...
+Setting up curl (7.74.0-1.3+deb11u7) ...
+Processing triggers for libc-bin (2.31-13+deb11u6) ...
+```
+
+kubectl exec pod/hello -- curl --silent http://localhost:80
+```
+Hello.
+```
+
+-->
+
+<!--
+
+Service
+
+-->

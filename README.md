@@ -1348,6 +1348,138 @@ Hello.
 
 <!--
 
-Service
+Self Service
+
+network ports listened to by the applications living inside containers wrapped in pods don't get automatically exposed to the outside world
+that would be a nice thing, and we can't have those
+exposing applications to the network is done by declaring a Service
+
+as over-engineered as it sounds to have another abstraction layer to route network trafic to our pods
+services are, at the end of times, not that unlikeable
+See, the pods are mostly immutable, and it's the doxa to consider them as disposable at will
+it means that those poor things will be sacrificed at any occasion, but they don't mind
+[portal they don't feel pain, just a simulation]
+for us however this means that we can't rely on the pod's IP address for a long term relationship
+not only the services hide the pods, they also do load-balancing, and they trigger the creation of a DNS entry internal to the cluster, which has the form `<SERVICE_NAME>.<SERVICE_NAMESPACE="default">.svc.cluster.local`
+
+let's create a service
+
+```diff
+📁 ..
+  📁 .
+    📁 applications
+      📁 hello
+        ✋ .gitignore
+        🧾 appsettings.Development.json
+        🧾 appsettings.json
+        🐳 Containerfile
+        🌐 hello.http
+        🧾 Martin.Hello.csproj
+        🧾 Program.cs
+        🧾 publish-me-daddy.ps1
+    📁 pods
+!     🧾 hello.yaml
++   📁 services
++     🧾 hello.yaml
+    📑 README.md
+```
+
+pods/hello.yaml:
+
+```diff
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: hello
++   labels:
++     app.kubernetes.io/name: 2545bb8b-e59c-4f4a-b362-2d1591215f25
+  spec:
+    containers:
+      - name: app
+        image: hello:v0
+```
+
+services/hello.yaml:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello
+spec:
+  selector:
+    app.kubernetes.io/name: 2545bb8b-e59c-4f4a-b362-2d1591215f25
+  ports:
+    - port: 5000
+      targetPort: 80
+```
+
+both the pod and the service have their `.metadata.name` set to `hello`
+but that doesn't matter, because they are resources of different types
+
+a service knows what pods to pass trafic to, not by the pods' names, which might change as much as pods are created and ditched, but by matching their "labels"
+
+labels are like tags that take the form of a string-string key-value pairs
+
+Kubernetes defines a bunch of [standard labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/#labels), among which `app.kubernetes.io/name`, which defines the name of the considered application
+which sounds like a safe starter for identifying pod wrapping containers in which applications live
+for the value, I'll use the second worst thing after a poor name: a giberrish GUID!
+
+services allow for changing the exposed network port
+the `.spec.ports[].port` is the port exposed by the service
+while the `.spec.ports[].targetPort` is the port the application in a container in a pod is listening to
+
+kubectl apply --filename ./pods/hello.yaml --force --filename ./services/hello.yaml
+```
+pod/hello configured
+service/hello created
+```
+
+kubectl get pods,services
+```
+NAME        READY   STATUS    RESTARTS   AGE
+pod/hello   1/1     Running   0          4m53s
+
+NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
+service/kubernetes   ClusterIP   10.43.0.1      <none>        443/TCP    21d
+service/hello        ClusterIP   10.43.46.187   <none>        5000/TCP   5m11s
+```
+
+Spawn another pod to CURL the application using our new service.
+
+kubectl run (new-guid) --image alpine:3.18.0 --rm --tty --stdin -- ash
+```
+If you don't see a command prompt, try pressing enter.
+```
+
+/ # apk add curl
+```
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64/APKINDEX.tar.gz
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.18/community/x86_64/APKINDEX.tar.gz
+(1/7) Installing ca-certificates (20230506-r0)
+(2/7) Installing brotli-libs (1.0.9-r14)
+(3/7) Installing libunistring (1.1-r1)
+(4/7) Installing libidn2 (2.3.4-r1)
+(5/7) Installing nghttp2-libs (1.55.1-r0)
+(6/7) Installing libcurl (8.2.1-r0)
+(7/7) Installing curl (8.2.1-r0)
+Executing busybox-1.36.0-r9.trigger
+Executing ca-certificates-20230506-r0.trigger
+OK: 12 MiB in 22 packages
+```
+
+/ # curl http://hello.default.svc.cluster.local:5000
+```
+Hello.
+```
+
+in the rancher desktop UI, nav to the Port Forwarding tab, find the hello service, click the Forward button, then use 5000 as the Local Port value, click the check mark
+
+Use `hello.http` to GET http://localhost:5000:
+
+```
+Hello.
+```
+
 
 -->

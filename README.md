@@ -285,8 +285,7 @@ dotnet publish "$PSScriptRoot" --configuration Release --no-self-contained --out
 MSBuild version 17.4.1+9a89d02ff for .NET
   Determining projects to restore...
   All projects are up-to-date for restore.
-  Martin.Hello -> ...\docs\applications\hello\bin\Release\net7.0\Martin.Hel
-  lo.dll
+  Martin.Hello -> ...\docs\applications\hello\bin\Release\net7.0\Martin.Hello.dll
   Martin.Hello -> ...\docs\applications\hello\bin\publish\
 ```
 
@@ -1481,5 +1480,303 @@ Use `hello.http` to GET http://localhost:5000:
 Hello.
 ```
 
+-->
+
+
+<!--
+
+Replica Sets
+
+update the application so that it displays a unique id that is set only once at startup of the application
+
+```diff
+📁 ..
+  📁 .
+    📁 applications
+      📁 hello
+        ✋ .gitignore
+        🧾 appsettings.Development.json
+        🧾 appsettings.json
+        🐳 Containerfile
+        🌐 hello.http
+        🧾 Martin.Hello.csproj
+!       🧾 Program.cs
+        🧾 publish-me-daddy.ps1
+    📁 pods
+      🧾 hello.yaml
+    📁 services
+      🧾 hello.yaml
+    📑 README.md
+```
+
+Program.cs:
+
+```diff
+  var builder = WebApplication.CreateBuilder(args);
+  var app = builder.Build();
++ var aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication = Guid.NewGuid().ToString();
+
+- app.MapGet("/", () =>                                                        $"Hello.");
++ app.MapGet("/", () => $"{aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication}\nHello.");
+- app.MapGet("/{name}", (string name) =>                                                        $"Hello, {name}.");
++ app.MapGet("/{name}", (string name) => $"{aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication}\nHello, {name}.");
+
+  app.Run();
+```
+
+dotnet run --project ./applications/hello
+```
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: ...\applications\hello
+```
+
+GET http://localhost:5000
+```
+5a854efa-5441-4efe-9b53-f66ec409822a
+Hello.
+```
+
+Not only that, but you will always get the same id until the application restarts
+
+./applications/hello/publish-me-daddy.ps1
+```
+MSBuild version 17.4.1+9a89d02ff for .NET
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Martin.Hello -> ...\applications\hello\bin\Release\net7.0\Martin.Hello.dll
+  Martin.Hello -> ...\applications\hello\bin\publish\
+```
+
+nerdctl image build --tag hello:v1 --namespace k8s.io ./applications/hello
+```
+[+] Building 4.6s (6/7)
+[+] Building 4.7s (7/7)
+[+] Building 4.8s (7/7) FINISHED
+ => [internal] load build definition from Containerfile                                                       0.0s
+ => => transferring dockerfile: 167B                                                                          0.0s
+ => [internal] load .dockerignore                                                                             0.0s
+ => => transferring context: 2B                                                                               0.0s
+ => [internal] load metadata for mcr.microsoft.com/dotnet/aspnet:7.0                                          2.2s
+ => [internal] load build context                                                                             0.3s
+ => => transferring context: 181.41kB                                                                         0.3s
+ => CACHED [1/2] FROM mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e  0.0s
+ => => resolve mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e720fe18  0.0s
+ => [2/2] COPY ./bin/publish /opt/hello                                                                       0.0s
+ => exporting to docker image format                                                                          2.1s
+ => => exporting layers                                                                                       0.1s
+ => => exporting manifest sha256:b1ae106290b3db89b17c874ff8899ea7047400b1fe82c1d75f8b6ce10c3d24ec             0.0s
+ => => exporting config sha256:8e9bd99f2f9fea78ccaea5dabd817e06203d3709d28b26388edbb0b5fc141576               0.0s
+ => => sending tarball                                                                                        2.0s
+```
+
+change pods/hello.yaml
+
+```diff
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: hello
+    labels:
+      app.kubernetes.io/name: 2545bb8b-e59c-4f4a-b362-2d1591215f25
+  spec:
+    containers:
+      - name: app
+-       image: hello:v0
++       image: hello:v1
+```
+
+kubectl apply --filename ./pods/hello.yaml --force
+```
+pod/hello configured
+```
+
+
+kubectl get pods
+```
+NAME    READY   STATUS    RESTARTS      AGE
+hello   1/1     Running   1 (15s ago)   46m
+```
+
+forward the port in the ranchar desktop ui
+
+GET http://localhost:5000
+
+```
+404e4879-8d29-4751-8f81-66e277ce977d
+Hello.
+```
+
+define a second pod
+
+```diff
+📁 ..
+  📁 .
+    📁 applications
+      📁 hello
+        ✋ .gitignore
+        🧾 appsettings.Development.json
+        🧾 appsettings.json
+        🐳 Containerfile
+        🌐 hello.http
+        🧾 Martin.Hello.csproj
+        🧾 Program.cs
+        🧾 publish-me-daddy.ps1
+    📁 pods
++     🧾 hello-2.yaml
+      🧾 hello.yaml
+    📁 services
+      🧾 hello.yaml
+    📑 README.md
+```
+
+hello-2.yaml
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hello-2
+  labels:
+    app.kubernetes.io/name: 2545bb8b-e59c-4f4a-b362-2d1591215f25
+spec:
+  containers:
+    - name: app
+      image: hello:v1
+```
+
+note that `hello-2` is a duplicate of `hello`
+it even has the same label, without which the service would not target it
+
+kubectl apply --filename ./pods/hello-2.yaml
+```
+pod/hello-2 created
+```
+
+
+for ($i = 0; $i -lt 10; $i++) { Invoke-RestMethod -Uri http://localhost:5000 }
+```
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+2a884b76-2fbc-4a74-923b-a3466286d056
+Hello.
+```
+
+only one pod responds, the trafix isn't spread by the service among the two pods as it should, because we can't have nice things, let's try to delay the response of our application by introducing an artificial delay
+
+Program.cs
+
+```diff
+  var builder = WebApplication.CreateBuilder(args);
+  var app = builder.Build();
+  var aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication = Guid.NewGuid().ToString();
+
+- app.MapGet("/", () => $"{aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication}\nHello.");
++ app.MapGet("/", async () =>
++ {
++   await Task.Delay(500);
++   return $"{aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication}\nHello.";
++ });
+
+- app.MapGet("/{name}", (string name) => $"{aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication}\nHello, {name}.");
++ app.MapGet("/{name}", async (string name) =>
++ {
++   await Task.Delay(500);
++   return $"{aUniqueIdThatIsSetOnlyOnceAtStartupOfTheApplication}\nHello, {name}.";
++ });
+
+  app.Run();
+```
+
+add the image build to `publish-me-daddy.ps1`
+
+```
++ param([String] $Tag)
+
+  dotnet publish "$PSScriptRoot" --configuration Release --no-self-contained --output "$PSScriptRoot/bin/publish"
++ nerdctl image build --tag "hello:$Tag" --namespace "k8s.io" "$PSScriptRoot"
+```
+
+./applications/hello/publish-me-daddy.ps1 -Tag "v2"
+
+```
+MSBuild version 17.4.1+9a89d02ff for .NET
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Martin.Hello -> ...\applications\hello\bin\Release\net7.0\Martin.Hello.dll
+  Martin.Hello -> ...\applications\hello\bin\publish\
+[+] Building 4.6s (7/7)
+[+] Building 4.7s (7/7) FINISHED
+ => [internal] load build definition from Containerfile                                                       0.1s
+ => => transferring dockerfile: 167B                                                                          0.0s
+ => [internal] load .dockerignore                                                                             0.1s
+ => => transferring context: 2B                                                                               0.0s
+ => [internal] load metadata for mcr.microsoft.com/dotnet/aspnet:7.0                                          2.2s
+ => [internal] load build context                                                                             0.3s
+ => => transferring context: 183.12kB                                                                         0.2s
+ => CACHED [1/2] FROM mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e  0.0s
+ => => resolve mcr.microsoft.com/dotnet/aspnet:7.0@sha256:54a3864f1c7dbb232982f61105aa18a59b976382a4e720fe18  0.0s
+ => [2/2] COPY ./bin/publish /opt/hello                                                                       0.0s
+ => exporting to docker image format                                                                          2.0s
+ => => exporting layers                                                                                       0.1s
+ => => exporting manifest sha256:5bfd400c905cab0a7e8556cd26e33340dc3ab006d1912935bec9a58835794daa             0.0s
+ => => exporting config sha256:229dadd01e6ec31a1051254ee81b3d94b04793030715be871febf27627f5f518               0.0s
+ => => sending tarball                                                                                        1.9s
+Loaded image: docker.io/library/hello:v2
+```
+
+kubectl apply --recursive --filename ./pods --filename ./services --force
+```
+pod/hello-2 configured
+pod/hello configured
+service/hello unchanged
+```
+
+for ($i = 0; $i -lt 10; $i++) { Invoke-RestMethod -Uri http://localhost:5000 }
+```
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+983433b6-1b9d-4f6d-b0c4-0b651a892ccd
+Hello.
+```
+
+Same results, just for a longer waiting time
 
 -->
